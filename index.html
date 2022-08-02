@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="shortcut icon" href="#" />
+    <link
+      rel="stylesheet"
+      href="https://use.fontawesome.com/releases/v5.15.1/css/all.css"
+      integrity="sha384-vp86vTRFVJgpjF9jiIGPEEqYqlDwgyBgEF109VFjmqGmIY/Y4HV4d3Gp2irVfcrp"
+      crossorigin="anonymous"
+    />
+    <title>Ball Game</title>
+    <style>
+      * {
+        padding: 0;
+        margin: 0;
+        background-color: rgb(12, 12, 12);
+      }
+      .grid {
+        background-color: rgb(12, 12, 12);
+        display: grid;
+        grid-template-columns: 240px 240px;
+        grid-template-rows: 320px 60px;
+        margin: 25px auto;
+        justify-content: center;
+        border: none;
+      }
+      canvas {
+        grid-column-start: 1;
+        grid-column-end: 2;
+        grid-row-start: 1;
+        grid-row-end: 2;
+        background: rgb(12, 12, 12);
+        border: solid;
+        border-color: #40e300;
+        z-index: 1;
+      }
+      #newButton {
+        margin-top: 20px;
+        grid-column-start: 1;
+        grid-column-end: 1;
+        grid-row-start: 2;
+        grid-row-end: 3;
+        justify-self: center;
+        align-items: center;
+        background-color: #40e300;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 20px;
+        cursor: pointer;
+      }
+      #mootButton,
+      #soundButton {
+        margin-top: 20px;
+        grid-column-start: 2;
+        grid-column-end: 2;
+        grid-row-start: 2;
+        grid-row-end: 3;
+        justify-self: center;
+        align-items: center;
+        background-color: #40e300;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 2px;
+        border: none;
+      }
+      .mute,
+      .sound {
+        border: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid">
+      <canvas id="myCanvas" width="480" height="320"></canvas>
+      <br />
+      <button type="button" id="newButton">New Game</button>
+      <button id="mute" class="mute">
+        <i id="mootButton" class="fas fa-volume-mute"></i>
+      </button>
+      <button id="sound" class="sound" hidden>
+        <i id="soundButton" class="fas fa-volume-up"></i>
+      </button>
+    </div>
+
+    <script>
+      // ----------- Initialise Variables
+      const canvas = document.getElementById("myCanvas");
+      const ctx = canvas.getContext("2d");
+      var x = canvas.width / 2;
+      var y = canvas.height - 30;
+      var dx = 2;
+      var dy = -2;
+      var ballRadius = 10;
+      var ballColour = "#40e300";
+      var paddle = {
+        height: 10,
+        width: 75,
+      };
+      var paddleX = (canvas.width - paddle.width) / 2;
+      var rightPressed = false;
+      var leftPressed = false;
+      var score = 0;
+      var brick = {
+        rowCount: 3,
+        columnCount: 5,
+        height: 20,
+        width: 75,
+        padding: 10,
+        offsetTop: 30,
+        offsetLeft: 30,
+      };
+      // sounds
+      var brickSound = new Audio("beep.mp3");
+      var paddleSound = new Audio("boop.mp3");
+      var winnerSound = new Audio("winner.mp3");
+      var gameOverSound = new Audio("gameOver.wav");
+      var wallSound = new Audio("thwomp.mp3");
+      var soundOn = false;
+
+      // ----------- Creation
+      // creates number of bricks based on the details found in the brick object
+      var bricks = [];
+      for (var c = 0; c < brick.columnCount; c++) {
+        bricks[c] = [];
+        for (var r = 0; r < brick.rowCount; r++) {
+          bricks[c][r] = { x: 0, y: 0, status: 1 };
+        }
+      }
+      // creates all the bricks using the number of rows and columns
+      function drawBricks() {
+        for (var c = 0; c < brick.columnCount; c++) {
+          for (var r = 0; r < brick.rowCount; r++) {
+            if (bricks[c][r].status == 1) {
+              var brickX = c * (brick.width + brick.padding) + brick.offsetLeft;
+              var brickY = r * (brick.height + brick.padding) + brick.offsetTop;
+              bricks[c][r].x = brickX;
+              bricks[c][r].y = brickY;
+              ctx.beginPath();
+              ctx.rect(brickX, brickY, brick.width, brick.height);
+              ctx.fillStyle = "#40e300";
+              ctx.fill();
+              ctx.closePath();
+            }
+          }
+        }
+      }
+
+      // Game over text
+      function drawGameOver() {
+        ctx.font = "60px Courier";
+        ctx.fillStyle = "#40e300";
+        ctx.fillText("GAME OVER", 85, 190);
+        soundOn ? gameOverSound.play() : null;
+      }
+
+      // Winner text
+      function drawWinner() {
+        ctx.font = "80px Courier";
+        ctx.fillStyle = "#40e300";
+        ctx.fillText("WINNER", 100, 190);
+      }
+
+      // score tally
+      function drawScore() {
+        ctx.font = "18px Courier";
+        ctx.fillStyle = "#40e300";
+        ctx.fillText(score, 8, 20);
+      }
+
+      // create the ball
+      function drawBall() {
+        ctx.beginPath();
+        ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+        ctx.fillStyle = ballColour;
+        ctx.fill();
+        ctx.closePath();
+      }
+
+      // creates the paddle
+      function drawPaddle() {
+        ctx.beginPath();
+        ctx.rect(
+          paddleX,
+          canvas.height - paddle.height,
+          paddle.width,
+          paddle.height
+        );
+        ctx.fillStyle = "#40e300";
+        ctx.fill();
+        ctx.closePath();
+      }
+
+      // ----------- Draw and collision
+      // Collision detection for bricks
+      function collisionDetection() {
+        for (var c = 0; c < brick.columnCount; c++) {
+          for (var r = 0; r < brick.rowCount; r++) {
+            var b = bricks[c][r];
+            if (b.status == 1) {
+              if (
+                x > b.x &&
+                x < b.x + brick.width &&
+                y > b.y &&
+                y < b.y + brick.height
+              ) {
+                dy = -dy;
+                b.status = 0;
+                soundOn ? brickSound.play() : null;
+                score++;
+                updateSpeed();
+                if (score == brick.rowCount * brick.columnCount) {
+                  clearInterval(intervalCurrent);
+                  drawWinner();
+                  soundOn ? winnerSound.play() : null;
+                }
+              }
+            }
+          }
+        }
+      }
+      // creates all the bricks using the number of rows and columns
+      function drawBricks() {
+        for (var c = 0; c < brick.columnCount; c++) {
+          for (var r = 0; r < brick.rowCount; r++) {
+            if (bricks[c][r].status == 1) {
+              var brickX = c * (brick.width + brick.padding) + brick.offsetLeft;
+              var brickY = r * (brick.height + brick.padding) + brick.offsetTop;
+              bricks[c][r].x = brickX;
+              bricks[c][r].y = brickY;
+              ctx.beginPath();
+              ctx.rect(brickX, brickY, brick.width, brick.height);
+              ctx.fillStyle = "#40e300";
+              ctx.fill();
+              ctx.closePath();
+            }
+          }
+        }
+      }
+
+      // the DRAW function. Creates all the movement.
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBricks();
+        drawBall();
+        drawPaddle();
+        collisionDetection();
+        drawScore();
+        x += dx;
+        y += dy;
+
+        // creates ball movement and collision with paddle
+        if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
+          dx = -dx;
+          soundOn ? wallSound.play() : null;
+        }
+        if (y + dy < ballRadius) {
+          dy = -dy;
+          soundOn ? wallSound.play() : null;
+        } else if (y + dy > canvas.height - ballRadius) {
+          if (x - paddle.height > paddleX && x < paddleX + (paddle.width + 4)) {
+            soundOn ? paddleSound.play() : null;
+            // creates spin on the ball
+            if (rightPressed) {
+              dx = dx + 0.7;
+            } else if (leftPressed) {
+              dx = dx - 0.7;
+            }
+            dy = -dy;
+            console.log(-dx);
+          } else {
+            clearInterval(intervalCurrent);
+            drawGameOver();
+          }
+        }
+
+        // move the paddle and paddle speed
+        if (rightPressed) {
+          paddleX += 4;
+          if (paddleX + paddle.width > canvas.width) {
+            paddleX = canvas.width - paddle.width;
+          }
+        } else if (leftPressed) {
+          paddleX -= 4;
+          if (paddleX < 0) {
+            paddleX = 0;
+          }
+        }
+      }
+
+      //  -----------  increase speed
+      // Speed increases.
+      var intervalVerySlow = setInterval(draw, 17);
+      var intervalSlow;
+      var intervalMedium;
+      var intervalFast;
+      var intervalVeryFast;
+      let intervalCurrent = intervalVerySlow;
+
+      function updateSpeed() {
+        if (score == 2) {
+          clearInterval(intervalVerySlow);
+          intervalSlow = setInterval(draw, 15);
+          intervalCurrent = intervalSlow;
+        } else if (score == 4) {
+          clearInterval(intervalSlow);
+          intervalMedium = setInterval(draw, 13);
+          intervalCurrent = intervalMedium;
+        } else if (score == 6) {
+          clearInterval(intervalMedium);
+          intervalFast = setInterval(draw, 10);
+          intervalCurrent = intervalFast;
+        } else if (score == 8) {
+          clearInterval(intervalFast);
+          intervalVeryFast = setInterval(draw, 8);
+          intervalCurrent = intervalVeryFast;
+        } else {
+          null;
+        }
+      }
+
+      // ----------- Event listeners and Key
+
+      // event listener for new game button
+      document
+        .getElementById("newButton")
+        .addEventListener("click", function () {
+          location.reload();
+        });
+
+      document
+        .getElementById("mootButton")
+        .addEventListener("click", function () {
+          if (soundOn) {
+            document.getElementById("mute").hidden = false;
+            document.getElementById("sound").hidden = true;
+            soundOn = !soundOn;
+          } else {
+            document.getElementById("mute").hidden = true;
+            document.getElementById("sound").hidden = false;
+            soundOn = !soundOn;
+          }
+        });
+      document
+        .getElementById("soundButton")
+        .addEventListener("click", function () {
+          if (soundOn) {
+            document.getElementById("mute").hidden = false;
+            document.getElementById("sound").hidden = true;
+            soundOn = !soundOn;
+          } else {
+            document.getElementById("mute").hidden = true;
+            document.getElementById("sound").hidden = false;
+            soundOn = !soundOn;
+          }
+        });
+
+      // creating variables for left and right keys
+      document.addEventListener("keydown", keyDownHandler, false);
+      document.addEventListener("keyup", keyUpHandler, false);
+
+      function keyDownHandler(e) {
+        if (e.key == "Right" || e.key == "ArrowRight") {
+          rightPressed = true;
+        } else if (e.key == "Left" || e.key == "ArrowLeft") {
+          leftPressed = true;
+        }
+      }
+      function keyUpHandler(e) {
+        if (e.key == "Right" || e.key == "ArrowRight") {
+          rightPressed = false;
+        } else if (e.key == "Left" || e.key == "ArrowLeft") {
+          leftPressed = false;
+        }
+      }
+    </script>
+  </body>
+</html>
